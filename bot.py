@@ -185,14 +185,26 @@ async def visit_notes(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["visit_notes"] = "" if text == "Пропустить" else text
     keyboard = [["📅 Сегодня"]]
     await update.message.reply_text(
-        "📅 Дата визита?",
+        "📅 Дата визита?\n(Например: 10.06.2026)",
         reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
     )
     return VISIT_DATE
 
 async def visit_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
-    visit_date = date.today().isoformat() if text == "📅 Сегодня" else text
+    if text == "📅 Сегодня":
+        visit_date = date.today().isoformat()
+    else:
+        try:
+            parts = text.strip().split(".")
+            if len(parts) == 3:
+                visit_date = f"{parts[2]}-{parts[1].zfill(2)}-{parts[0].zfill(2)}"
+            else:
+                await update.message.reply_text("❌ Неверный формат даты. Используй формат: 10.06.2026\nИли нажми кнопку 📅 Сегодня")
+                return VISIT_DATE
+        except:
+            await update.message.reply_text("❌ Неверный формат даты. Используй формат: 10.06.2026\nИли нажми кнопку 📅 Сегодня")
+            return VISIT_DATE
 
     guest_name = context.user_data["guest_name"]
     guest_id = context.user_data["guest_id"]
