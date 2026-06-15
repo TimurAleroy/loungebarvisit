@@ -18,24 +18,18 @@ HEADERS = {
     "Content-Type": "application/json"
 }
 
-(GUEST_NAME, SELECT_GUEST, CONFIRM_GUEST, NEW_FREQUENCY, NEW_HOOKAH_PREF,
- NEW_DRINKS_PREF, NEW_IMPORTANT, CREATE_GUEST, VISIT_HOOKAH, VISIT_DRINKS,
- VISIT_NOTES, VISIT_DATE) = range(12)
+(GUEST_NAME, SELECT_GUEST, CONFIRM_GUEST,
+ NEW_FREQUENCY, NEW_HOOKAH_PREF, NEW_DRINKS_PREF, NEW_IMPORTANT,
+ VISIT_HOOKAH, VISIT_DRINKS, VISIT_NOTES, VISIT_DATE) = range(11)
 
 async def stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.clear()
-    await update.message.reply_text(
-        "🛑 Остановлено. Напиши имя гостя чтобы начать заново.",
-        reply_markup=ReplyKeyboardRemove()
-    )
+    await update.message.reply_text("🛑 Остановлено. Напиши имя гостя чтобы начать заново.", reply_markup=ReplyKeyboardRemove())
     return ConversationHandler.END
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.clear()
-    await update.message.reply_text(
-        "👋 Напиши имя гостя:\n\n/stop — отменить в любой момент",
-        reply_markup=ReplyKeyboardRemove()
-    )
+    await update.message.reply_text("👋 Напиши имя гостя:\n\n/stop — отменить в любой момент", reply_markup=ReplyKeyboardRemove())
     return GUEST_NAME
 
 async def get_guest_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -49,29 +43,20 @@ async def get_guest_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     results = res.json().get("results", [])
 
     if len(results) == 1:
-        # Один гость — сразу показываем карточку
-        guest = results[0]
-        return await show_guest_card(update, context, guest)
-
+        return await show_guest_card(update, context, results[0])
     elif len(results) > 1:
-        # Несколько гостей — показываем список для выбора
         context.user_data["search_results"] = [
-            {
-                "id": g["id"],
-                "name": g["properties"]["Имя Гостя"]["title"][0]["plain_text"]
-            }
+            {"id": g["id"], "name": g["properties"]["Имя Гостя"]["title"][0]["plain_text"]}
             for g in results
         ]
         names = [g["name"] for g in context.user_data["search_results"]]
         keyboard = [[n] for n in names] + [["❌ Никто из них"]]
         await update.message.reply_text(
-            f"Нашёл {len(results)} гостей с именем «{name}».\nВыбери нужного:",
+            f"Нашёл {len(results)} гостей «{name}». Выбери нужного:",
             reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
         )
         return SELECT_GUEST
-
     else:
-        # Гость не найден
         context.user_data["new_guest_name"] = name
         keyboard = [["✅ Создать", "❌ Отмена"]]
         await update.message.reply_text(
@@ -83,24 +68,14 @@ async def get_guest_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def select_guest(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
-
     if text == "❌ Никто из них":
-        await update.message.reply_text(
-            "Напиши имя гостя ещё раз:",
-            reply_markup=ReplyKeyboardRemove()
-        )
+        await update.message.reply_text("Напиши имя гостя:", reply_markup=ReplyKeyboardRemove())
         return GUEST_NAME
 
-    # Ищем выбранного гостя
     for g in context.user_data.get("search_results", []):
         if g["name"] == text:
-            # Получаем полную карточку
-            res = requests.get(
-                f"https://api.notion.com/v1/pages/{g['id']}",
-                headers=HEADERS
-            )
-            guest = res.json()
-            return await show_guest_card(update, context, guest)
+            res = requests.get(f"https://api.notion.com/v1/pages/{g['id']}", headers=HEADERS)
+            return await show_guest_card(update, context, res.json())
 
     await update.message.reply_text("Не понял выбор. Попробуй ещё раз.")
     return SELECT_GUEST
@@ -126,7 +101,7 @@ async def show_guest_card(update, context, guest):
         f"⭐ Важно: {get_text('Что важно для гостя')}"
     )
 
-    keyboard = [["✅ Да, добавить визит", "❌ Другой гость"]]
+    keyboard = [["✅ Добавить визит", "❌ Другой гость"]]
     await update.message.reply_text(
         f"{info}\n\nДобавить визит?",
         parse_mode="Markdown",
@@ -135,19 +110,18 @@ async def show_guest_card(update, context, guest):
     return CONFIRM_GUEST
 
 async def confirm_guest(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.message.text == "✅ Да, добавить визит":
-        await update.message.reply_text(
-            "🪄 Что заказал по кальяну сегодня?",
-            reply_markup=ReplyKeyboardRemove()
-        )
+    if update.message.text == "✅ Добавить визит":
+        await update.message.reply_text("🪄 Что заказал по кальяну сегодня?", reply_markup=ReplyKeyboardRemove())
         return VISIT_HOOKAH
     else:
         await update.message.reply_text("Напиши имя гостя:", reply_markup=ReplyKeyboardRemove())
         return GUEST_NAME
 
+# ─── НОВЫЙ ГОСТЬ ─────────────────────────────────────
+
 async def new_frequency(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.text == "❌ Отмена":
-        await update.message.reply_text("Отменено. Напиши имя гостя.", reply_markup=ReplyKeyboardRemove())
+        await update.message.reply_text("Отменено.", reply_markup=ReplyKeyboardRemove())
         return ConversationHandler.END
 
     keyboard = [["Постоянный", "Редкий", "Новый"]]
@@ -160,10 +134,7 @@ async def new_frequency(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def new_hookah_pref(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["new_frequency"] = update.message.text.strip()
-    await update.message.reply_text(
-        "🪄 Предпочтения по кальяну?\n(Вкус и крепость)",
-        reply_markup=ReplyKeyboardRemove()
-    )
+    await update.message.reply_text("🪄 Предпочтения по кальяну?\n(Вкус и крепость)", reply_markup=ReplyKeyboardRemove())
     return NEW_DRINKS_PREF
 
 async def new_drinks_pref(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -178,13 +149,13 @@ async def new_important(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "⭐ Что важно для гостя?\n(Сервис, место, атмосфера и т.д.)",
         reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
     )
-    return CREATE_GUEST
+    return NEW_IMPORTANT + 1
 
-async def create_guest_and_start_visit(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def create_guest(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
     important = "" if text == "Пропустить" else text
-
     name = context.user_data["new_guest_name"]
+
     page_data = {
         "parent": {"database_id": NOTION_DB_ID},
         "properties": {
@@ -197,21 +168,19 @@ async def create_guest_and_start_visit(update: Update, context: ContextTypes.DEF
     }
     res = requests.post("https://api.notion.com/v1/pages", headers=HEADERS, json=page_data)
 
-    if res.status_code != 200:
-        await update.message.reply_text("❌ Ошибка при создании гостя. Попробуй /stop и начни заново.")
-        return ConversationHandler.END
+    if res.status_code == 200:
+        await update.message.reply_text(
+            f"✅ Карточка *{name}* создана!\n\nКогда гость придёт снова — просто напиши его имя и добавь визит.",
+            parse_mode="Markdown",
+            reply_markup=ReplyKeyboardRemove()
+        )
+    else:
+        await update.message.reply_text("❌ Ошибка при создании. Попробуй /stop и начни заново.", reply_markup=ReplyKeyboardRemove())
 
-    guest = res.json()
-    context.user_data["guest_id"] = guest["id"]
-    context.user_data["guest_name"] = name
-    context.user_data.pop("new_guest_name", None)
+    context.user_data.clear()
+    return ConversationHandler.END
 
-    await update.message.reply_text(
-        f"✅ Карточка *{name}* создана!\n\nТеперь добавим первый визит.\n🪄 Что заказал по кальяну сегодня?",
-        parse_mode="Markdown",
-        reply_markup=ReplyKeyboardRemove()
-    )
-    return VISIT_HOOKAH
+# ─── ВИЗИТ ───────────────────────────────────────────
 
 async def visit_hookah(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["visit_hookah"] = update.message.text.strip()
@@ -250,9 +219,7 @@ async def visit_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
             else:
                 raise ValueError
         except:
-            await update.message.reply_text(
-                "❌ Неверный формат. Используй: 10.06.2026\nИли нажми 📅 Сегодня"
-            )
+            await update.message.reply_text("❌ Неверный формат. Используй: 10.06.2026\nИли нажми 📅 Сегодня")
             return VISIT_DATE
 
     guest_name = context.user_data["guest_name"]
@@ -277,7 +244,7 @@ async def visit_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if res.status_code == 200:
         await update.message.reply_text(
-            f"✅ Готово!\n\n"
+            f"✅ Визит сохранён!\n\n"
             f"👤 {guest_name}\n"
             f"📅 {visit_date_str}\n"
             f"🪄 {hookah}\n"
@@ -287,13 +254,12 @@ async def visit_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=ReplyKeyboardRemove()
         )
     else:
-        await update.message.reply_text(
-            "❌ Ошибка при сохранении. Попробуй /stop и начни заново.",
-            reply_markup=ReplyKeyboardRemove()
-        )
+        await update.message.reply_text("❌ Ошибка при сохранении. Попробуй /stop", reply_markup=ReplyKeyboardRemove())
 
     context.user_data.clear()
     return ConversationHandler.END
+
+CREATE_GUEST = NEW_IMPORTANT + 1
 
 conv_handler = ConversationHandler(
     entry_points=[
@@ -308,7 +274,7 @@ conv_handler = ConversationHandler(
         NEW_HOOKAH_PREF: [MessageHandler(filters.TEXT & ~filters.COMMAND, new_hookah_pref)],
         NEW_DRINKS_PREF: [MessageHandler(filters.TEXT & ~filters.COMMAND, new_drinks_pref)],
         NEW_IMPORTANT: [MessageHandler(filters.TEXT & ~filters.COMMAND, new_important)],
-        CREATE_GUEST: [MessageHandler(filters.TEXT & ~filters.COMMAND, create_guest_and_start_visit)],
+        CREATE_GUEST: [MessageHandler(filters.TEXT & ~filters.COMMAND, create_guest)],
         VISIT_HOOKAH: [MessageHandler(filters.TEXT & ~filters.COMMAND, visit_hookah)],
         VISIT_DRINKS: [MessageHandler(filters.TEXT & ~filters.COMMAND, visit_drinks)],
         VISIT_NOTES: [MessageHandler(filters.TEXT & ~filters.COMMAND, visit_notes)],
