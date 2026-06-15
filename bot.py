@@ -127,7 +127,6 @@ async def show_guest_card(update, context, guest):
 async def confirm_guest(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.text == "✅ Добавить визит":
         role = context.user_data.get("role")
-        # Проверяем есть ли уже визит за сегодня
         today = date.today().isoformat()
         res = requests.post(
             f"https://api.notion.com/v1/databases/{NOTION_VISITS_DB_ID}/query",
@@ -144,7 +143,6 @@ async def confirm_guest(update: Update, context: ContextTypes.DEFAULT_TYPE):
         visits = res.json().get("results", [])
 
         if visits:
-            # Визит уже есть — дополняем
             context.user_data["visit_id"] = visits[0]["id"]
             context.user_data["visit_exists"] = True
             existing = visits[0]["properties"]
@@ -166,7 +164,6 @@ async def confirm_guest(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
                 return BAR_INPUT
         else:
-            # Визита нет — создаём новый
             context.user_data["visit_exists"] = False
             if role == "hookah":
                 await update.message.reply_text("🪄 Что заказал по кальяну?", reply_markup=ReplyKeyboardRemove())
@@ -226,7 +223,7 @@ async def create_guest(update: Update, context: ContextTypes.DEFAULT_TYPE):
     res = requests.post("https://api.notion.com/v1/pages", headers=HEADERS, json=page_data)
     if res.status_code == 200:
         await update.message.reply_text(
-            f"✅ Карточка *{name}* создана!\n\nКогда придёт снова — напиши имя и добавь визит.",
+            f"✅ Карточка *{name}* создана!\n\nКогда придёт снова — напиши /start и добавь визит.",
             parse_mode="Markdown", reply_markup=ReplyKeyboardRemove()
         )
     else:
@@ -251,7 +248,6 @@ async def hookah_notes(update: Update, context: ContextTypes.DEFAULT_TYPE):
     today = date.today().isoformat()
 
     if context.user_data.get("visit_exists"):
-        # Дополняем существующий визит
         visit_id = context.user_data["visit_id"]
         existing_res = requests.get(f"https://api.notion.com/v1/pages/{visit_id}", headers=HEADERS)
         existing_notes = ""
@@ -259,7 +255,6 @@ async def hookah_notes(update: Update, context: ContextTypes.DEFAULT_TYPE):
             rt = existing_res.json()["properties"].get("Заметки", {}).get("rich_text", [])
             existing_notes = rt[0]["plain_text"] if rt else ""
         combined_notes = f"{existing_notes} / {notes}".strip(" /") if existing_notes and notes else (notes or existing_notes)
-
         requests.patch(f"https://api.notion.com/v1/pages/{visit_id}", headers=HEADERS, json={
             "properties": {
                 "Кальян": {"rich_text": [{"text": {"content": hookah}}]},
@@ -271,7 +266,6 @@ async def hookah_notes(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=ReplyKeyboardRemove()
         )
     else:
-        # Создаём новый визит
         page_data = {
             "parent": {"database_id": NOTION_VISITS_DB_ID},
             "properties": {
@@ -308,7 +302,6 @@ async def bar_notes(update: Update, context: ContextTypes.DEFAULT_TYPE):
     today = date.today().isoformat()
 
     if context.user_data.get("visit_exists"):
-        # Дополняем существующий визит
         visit_id = context.user_data["visit_id"]
         existing_res = requests.get(f"https://api.notion.com/v1/pages/{visit_id}", headers=HEADERS)
         existing_notes = ""
@@ -316,7 +309,6 @@ async def bar_notes(update: Update, context: ContextTypes.DEFAULT_TYPE):
             rt = existing_res.json()["properties"].get("Заметки", {}).get("rich_text", [])
             existing_notes = rt[0]["plain_text"] if rt else ""
         combined_notes = f"{existing_notes} / {notes}".strip(" /") if existing_notes and notes else (notes or existing_notes)
-
         requests.patch(f"https://api.notion.com/v1/pages/{visit_id}", headers=HEADERS, json={
             "properties": {
                 "Напитки": {"rich_text": [{"text": {"content": drinks}}]},
@@ -328,7 +320,6 @@ async def bar_notes(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=ReplyKeyboardRemove()
         )
     else:
-        # Создаём новый визит
         page_data = {
             "parent": {"database_id": NOTION_VISITS_DB_ID},
             "properties": {
@@ -351,10 +342,7 @@ async def bar_notes(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ─── ЗАПУСК ──────────────────────────────────────────
 
 conv_handler = ConversationHandler(
-    entry_points=[
-        CommandHandler("start", start),
-        MessageHandler(filters.TEXT & ~filters.COMMAND, start)
-    ],
+    entry_points=[CommandHandler("start", start)],
     states={
         ROLE: [MessageHandler(filters.TEXT & ~filters.COMMAND, choose_role)],
         GUEST_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_guest_name)],
