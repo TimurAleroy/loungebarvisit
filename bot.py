@@ -19,9 +19,29 @@ HEADERS = {
 }
 
 (ROLE, GUEST_NAME, SELECT_GUEST, CONFIRM_GUEST,
- NEW_FREQUENCY, NEW_HOOKAH_PREF, NEW_DRINKS_PREF, NEW_IMPORTANT, CREATE_GUEST,
+ NEW_FREQUENCY, NEW_IMPORTANT, CREATE_GUEST,
  HOOKAH_INPUT, HOOKAH_NOTES,
- BAR_INPUT, BAR_NOTES) = range(13)
+ BAR_INPUT, BAR_NOTES) = range(11)
+
+def cleanup_old_visits(guest_id, keep=3):
+    """Оставляет только последние N визитов, удаляет остальные"""
+    res = requests.post(
+        f"https://api.notion.com/v1/databases/{NOTION_VISITS_DB_ID}/query",
+        headers=HEADERS,
+        json={
+            "filter": {"property": "Гость", "relation": {"contains": guest_id}},
+            "sorts": [{"property": "Дата", "direction": "descending"}],
+            "page_size": 100
+        }
+    )
+    visits = res.json().get("results", [])
+    if len(visits) > keep:
+        for old_visit in visits[keep:]:
+            requests.patch(
+                f"https://api.notion.com/v1/pages/{old_visit['id']}",
+                headers=HEADERS,
+                json={"archived": True}
+            )
 
 async def stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.clear()
@@ -47,11 +67,8 @@ async def choose_role(update: Update, context: ContextTypes.DEFAULT_TYPE):
         keyboard = [["🪄 Кальянщик", "🍹 Бармен"]]
         await update.message.reply_text("Выбери роль:", reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True))
         return ROLE
-
     await update.message.reply_text("Напиши имя гостя:", reply_markup=ReplyKeyboardRemove())
     return GUEST_NAME
-
-# ─── ПОИСК ГОСТЯ ─────────────────────────────────────
 
 async def get_guest_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     name = update.message.text.strip()
@@ -111,8 +128,6 @@ async def show_guest_card(update, context, guest):
     info = (
         f"👤 *{guest_name}*\n"
         f"📊 Частота: {get_select('Частота визитов')}\n"
-        f"🪄 Кальян: {get_text('Кальян — вкус и крепость')}\n"
-        f"🍹 Напитки: {get_text('Напитки — предпочтения')}\n"
         f"⭐ Важно: {get_text('Что важно для гостя')}"
     )
 
@@ -187,22 +202,15 @@ async def new_frequency(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="Markdown",
         reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
     )
-    return NEW_HOOKAH_PREF
-
-async def new_hookah_pref(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data["new_frequency"] = update.message.text.strip()
-    await update.message.reply_text("🪄 Предпочтения по кальяну?", reply_markup=ReplyKeyboardRemove())
-    return NEW_DRINKS_PREF
-
-async def new_drinks_pref(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data["new_hookah_pref"] = update.message.text.strip()
-    await update.message.reply_text("🍹 Предпочтения по напиткам?")
     return NEW_IMPORTANT
 
 async def new_important(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data["new_drinks_pref"] = update.message.text.strip()
+    context.user_data["new_frequency"] = update.message.text.strip()
     keyboard = [["Пропустить"]]
-    await update.message.reply_text("⭐ Что важно для гостя?", reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True))
+    await update.message.reply_text(
+        "⭐ Что важно для гостя?\n(Сервис, место, атмосфера и т.д.)",
+        reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+    )
     return CREATE_GUEST
 
 async def create_guest(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -215,15 +223,13 @@ async def create_guest(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "properties": {
             "Имя Гостя": {"title": [{"text": {"content": name}}]},
             "Частота визитов": {"select": {"name": context.user_data["new_frequency"]}},
-            "Кальян — вкус и крепость": {"rich_text": [{"text": {"content": context.user_data["new_hookah_pref"]}}]},
-            "Напитки — предпочтения": {"rich_text": [{"text": {"content": context.user_data["new_drinks_pref"]}}]},
             "Что важно для гостя": {"rich_text": [{"text": {"content": important}}]},
         }
     }
     res = requests.post("https://api.notion.com/v1/pages", headers=HEADERS, json=page_data)
     if res.status_code == 200:
         await update.message.reply_text(
-            f"✅ Карточка *{name}* создана!\n\nКогда придёт снова — напиши /start и добавь визит.",
+            f"✅ Карточка *{name}* создана!\n\nКогда придёт снова — нажми /start и добавь визит.",
             parse_mode="Markdown", reply_markup=ReplyKeyboardRemove()
         )
     else:
@@ -277,6 +283,8 @@ async def hookah_notes(update: Update, context: ContextTypes.DEFAULT_TYPE):
             }
         }
         requests.post("https://api.notion.com/v1/pages", headers=HEADERS, json=page_data)
+        # Удаляем старые визиты — оставляем только 3
+        cleanup_old_visits(guest_id, keep=3)
         await update.message.reply_text(
             f"✅ Визит создан!\n👤 {guest_name}\n📅 {today}\n🪄 {hookah}\n📝 {notes if notes else '—'}",
             reply_markup=ReplyKeyboardRemove()
@@ -331,6 +339,8 @@ async def bar_notes(update: Update, context: ContextTypes.DEFAULT_TYPE):
             }
         }
         requests.post("https://api.notion.com/v1/pages", headers=HEADERS, json=page_data)
+        # Удаляем старые визиты — оставляем только 3
+        cleanup_old_visits(guest_id, keep=3)
         await update.message.reply_text(
             f"✅ Визит создан!\n👤 {guest_name}\n📅 {today}\n🍹 {drinks}\n📝 {notes if notes else '—'}",
             reply_markup=ReplyKeyboardRemove()
@@ -349,8 +359,6 @@ conv_handler = ConversationHandler(
         SELECT_GUEST: [MessageHandler(filters.TEXT & ~filters.COMMAND, select_guest)],
         CONFIRM_GUEST: [MessageHandler(filters.TEXT & ~filters.COMMAND, confirm_guest)],
         NEW_FREQUENCY: [MessageHandler(filters.TEXT & ~filters.COMMAND, new_frequency)],
-        NEW_HOOKAH_PREF: [MessageHandler(filters.TEXT & ~filters.COMMAND, new_hookah_pref)],
-        NEW_DRINKS_PREF: [MessageHandler(filters.TEXT & ~filters.COMMAND, new_drinks_pref)],
         NEW_IMPORTANT: [MessageHandler(filters.TEXT & ~filters.COMMAND, new_important)],
         CREATE_GUEST: [MessageHandler(filters.TEXT & ~filters.COMMAND, create_guest)],
         HOOKAH_INPUT: [MessageHandler(filters.TEXT & ~filters.COMMAND, hookah_input)],
