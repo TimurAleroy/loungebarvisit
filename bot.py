@@ -19,12 +19,11 @@ HEADERS = {
 }
 
 (ROLE, GUEST_NAME, SELECT_GUEST, CONFIRM_GUEST,
- NEW_FREQUENCY, NEW_IMPORTANT, CREATE_GUEST,
+ NEW_STATUS, NEW_BIRTHDAY, NEW_PHONE, NEW_IMPORTANT, CREATE_GUEST,
  HOOKAH_INPUT, HOOKAH_NOTES,
- BAR_INPUT, BAR_NOTES) = range(11)
+ BAR_INPUT, BAR_NOTES) = range(13)
 
 def cleanup_old_visits(guest_id, keep=3):
-    """Оставляет только последние N визитов, удаляет остальные"""
     res = requests.post(
         f"https://api.notion.com/v1/databases/{NOTION_VISITS_DB_ID}/query",
         headers=HEADERS,
@@ -37,11 +36,7 @@ def cleanup_old_visits(guest_id, keep=3):
     visits = res.json().get("results", [])
     if len(visits) > keep:
         for old_visit in visits[keep:]:
-            requests.patch(
-                f"https://api.notion.com/v1/pages/{old_visit['id']}",
-                headers=HEADERS,
-                json={"archived": True}
-            )
+            requests.patch(f"https://api.notion.com/v1/pages/{old_visit['id']}", headers=HEADERS, json={"archived": True})
 
 async def stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.clear()
@@ -51,10 +46,7 @@ async def stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.clear()
     keyboard = [["🪄 Кальянщик", "🍹 Бармен"]]
-    await update.message.reply_text(
-        "👋 Привет! Кто ты?",
-        reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-    )
+    await update.message.reply_text("👋 Привет! Кто ты?", reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True))
     return ROLE
 
 async def choose_role(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -98,7 +90,7 @@ async def get_guest_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown",
             reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
         )
-        return NEW_FREQUENCY
+        return NEW_STATUS
 
 async def select_guest(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
@@ -127,7 +119,7 @@ async def show_guest_card(update, context, guest):
 
     info = (
         f"👤 *{guest_name}*\n"
-        f"📊 Частота: {get_select('Частота визитов')}\n"
+        f"🏷 Статус: {get_select('Частота визитов')}\n"
         f"⭐ Важно: {get_text('Что важно для гостя')}"
     )
 
@@ -168,13 +160,13 @@ async def confirm_guest(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             if role == "hookah":
                 await update.message.reply_text(
-                    f"✅ Визит за сегодня найден.\n🍹 Напитки: {drinks_text}\n\n🪄 Что заказал по кальяну?",
+                    f"✅ Визит найден.\n🍹 Напитки: {drinks_text}\n\n🪄 Что заказал по кальяну?",
                     reply_markup=ReplyKeyboardRemove()
                 )
                 return HOOKAH_INPUT
             else:
                 await update.message.reply_text(
-                    f"✅ Визит за сегодня найден.\n🪄 Кальян: {hookah_text}\n\n🍹 Что заказал из напитков?",
+                    f"✅ Визит найден.\n🪄 Кальян: {hookah_text}\n\n🍹 Что заказал из напитков?",
                     reply_markup=ReplyKeyboardRemove()
                 )
                 return BAR_INPUT
@@ -192,20 +184,51 @@ async def confirm_guest(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ─── НОВЫЙ ГОСТЬ ─────────────────────────────────────
 
-async def new_frequency(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def new_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.text == "❌ Отмена":
         await update.message.reply_text("Отменено.", reply_markup=ReplyKeyboardRemove())
         return ConversationHandler.END
-    keyboard = [["Постоянный", "Редкий", "Новый"]]
+    keyboard = [["VIP", "Постоянный"], ["Редкий", "Новый"]]
     await update.message.reply_text(
-        f"Создаём карточку для *{context.user_data['new_guest_name']}*\n\n📊 Частота визитов?",
+        f"Создаём карточку для *{context.user_data['new_guest_name']}*\n\n🏷 Статус гостя?",
         parse_mode="Markdown",
+        reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+    )
+    return NEW_BIRTHDAY
+
+async def new_birthday(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data["new_status"] = update.message.text.strip()
+    keyboard = [["Пропустить"]]
+    await update.message.reply_text(
+        "🎂 Дата рождения?\n(Например: 15.06.1990, или пропусти)",
+        reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+    )
+    return NEW_PHONE
+
+async def new_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text.strip()
+    if text != "Пропустить":
+        try:
+            parts = text.split(".")
+            if len(parts) == 3:
+                context.user_data["new_birthday"] = f"{parts[2]}-{parts[1].zfill(2)}-{parts[0].zfill(2)}"
+            else:
+                context.user_data["new_birthday"] = None
+        except:
+            context.user_data["new_birthday"] = None
+    else:
+        context.user_data["new_birthday"] = None
+
+    keyboard = [["Пропустить"]]
+    await update.message.reply_text(
+        "📱 Номер телефона?\n(Или пропусти)",
         reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
     )
     return NEW_IMPORTANT
 
 async def new_important(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data["new_frequency"] = update.message.text.strip()
+    text = update.message.text.strip()
+    context.user_data["new_phone"] = None if text == "Пропустить" else text
     keyboard = [["Пропустить"]]
     await update.message.reply_text(
         "⭐ Что важно для гостя?\n(Сервис, место, атмосфера и т.д.)",
@@ -218,15 +241,19 @@ async def create_guest(update: Update, context: ContextTypes.DEFAULT_TYPE):
     important = "" if text == "Пропустить" else text
     name = context.user_data["new_guest_name"]
 
-    page_data = {
-        "parent": {"database_id": NOTION_DB_ID},
-        "properties": {
-            "Имя Гостя": {"title": [{"text": {"content": name}}]},
-            "Частота визитов": {"select": {"name": context.user_data["new_frequency"]}},
-            "Что важно для гостя": {"rich_text": [{"text": {"content": important}}]},
-        }
+    properties = {
+        "Имя Гостя": {"title": [{"text": {"content": name}}]},
+        "Частота визитов": {"select": {"name": context.user_data["new_status"]}},
+        "Что важно для гостя": {"rich_text": [{"text": {"content": important}}]},
     }
+    if context.user_data.get("new_birthday"):
+        properties["Дата рождения"] = {"date": {"start": context.user_data["new_birthday"]}}
+    if context.user_data.get("new_phone"):
+        properties["Телефон"] = {"phone_number": context.user_data["new_phone"]}
+
+    page_data = {"parent": {"database_id": NOTION_DB_ID}, "properties": properties}
     res = requests.post("https://api.notion.com/v1/pages", headers=HEADERS, json=page_data)
+
     if res.status_code == 200:
         await update.message.reply_text(
             f"✅ Карточка *{name}* создана!\n\nКогда придёт снова — нажми /start и добавь визит.",
@@ -283,7 +310,6 @@ async def hookah_notes(update: Update, context: ContextTypes.DEFAULT_TYPE):
             }
         }
         requests.post("https://api.notion.com/v1/pages", headers=HEADERS, json=page_data)
-        # Удаляем старые визиты — оставляем только 3
         cleanup_old_visits(guest_id, keep=3)
         await update.message.reply_text(
             f"✅ Визит создан!\n👤 {guest_name}\n📅 {today}\n🪄 {hookah}\n📝 {notes if notes else '—'}",
@@ -339,7 +365,6 @@ async def bar_notes(update: Update, context: ContextTypes.DEFAULT_TYPE):
             }
         }
         requests.post("https://api.notion.com/v1/pages", headers=HEADERS, json=page_data)
-        # Удаляем старые визиты — оставляем только 3
         cleanup_old_visits(guest_id, keep=3)
         await update.message.reply_text(
             f"✅ Визит создан!\n👤 {guest_name}\n📅 {today}\n🍹 {drinks}\n📝 {notes if notes else '—'}",
@@ -358,7 +383,9 @@ conv_handler = ConversationHandler(
         GUEST_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_guest_name)],
         SELECT_GUEST: [MessageHandler(filters.TEXT & ~filters.COMMAND, select_guest)],
         CONFIRM_GUEST: [MessageHandler(filters.TEXT & ~filters.COMMAND, confirm_guest)],
-        NEW_FREQUENCY: [MessageHandler(filters.TEXT & ~filters.COMMAND, new_frequency)],
+        NEW_STATUS: [MessageHandler(filters.TEXT & ~filters.COMMAND, new_status)],
+        NEW_BIRTHDAY: [MessageHandler(filters.TEXT & ~filters.COMMAND, new_birthday)],
+        NEW_PHONE: [MessageHandler(filters.TEXT & ~filters.COMMAND, new_phone)],
         NEW_IMPORTANT: [MessageHandler(filters.TEXT & ~filters.COMMAND, new_important)],
         CREATE_GUEST: [MessageHandler(filters.TEXT & ~filters.COMMAND, create_guest)],
         HOOKAH_INPUT: [MessageHandler(filters.TEXT & ~filters.COMMAND, hookah_input)],
