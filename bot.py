@@ -19,9 +19,9 @@ HEADERS = {
 }
 
 (ROLE, GUEST_NAME, SELECT_GUEST, CONFIRM_GUEST,
- NEW_STATUS, NEW_BIRTHDAY, NEW_PHONE, NEW_IMPORTANT, CREATE_GUEST,
+ NEW_STATUS, NEW_BIRTHDAY, NEW_PHONE, NEW_IMPORTANT, CREATE_GUEST, AFTER_CREATE,
  HOOKAH_INPUT, HOOKAH_NOTES,
- BAR_INPUT, BAR_NOTES) = range(13)
+ BAR_INPUT, BAR_NOTES) = range(14)
 
 def cleanup_old_visits(guest_id, keep=3):
     res = requests.post(
@@ -255,13 +255,41 @@ async def create_guest(update: Update, context: ContextTypes.DEFAULT_TYPE):
     res = requests.post("https://api.notion.com/v1/pages", headers=HEADERS, json=page_data)
 
     if res.status_code == 200:
+        guest = res.json()
+        role = context.user_data.get("role")
+        # Сохраняем для возможного немедленного визита
+        context.user_data.clear()
+        context.user_data["role"] = role
+        context.user_data["guest_id"] = guest["id"]
+        context.user_data["guest_name"] = name
+        context.user_data["visit_exists"] = False
+
+        keyboard = [["✅ Добавить визит сейчас", "❌ Позже"]]
         await update.message.reply_text(
-            f"✅ Карточка *{name}* создана!\n\nКогда придёт снова — нажми /start и добавь визит.",
-            parse_mode="Markdown", reply_markup=ReplyKeyboardRemove()
+            f"✅ Карточка *{name}* создана!\n\nДобавить визит сейчас?",
+            parse_mode="Markdown",
+            reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
         )
+        return AFTER_CREATE
     else:
         await update.message.reply_text("❌ Ошибка. Попробуй /stop", reply_markup=ReplyKeyboardRemove())
-    context.user_data.clear()
+        context.user_data.clear()
+        return ConversationHandler.END
+
+async def after_create(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text.strip()
+    if text == "✅ Добавить визит сейчас":
+        role = context.user_data.get("role")
+        if role == "hookah":
+            await update.message.reply_text("🪄 Что заказал по кальяну?", reply_markup=ReplyKeyboardRemove())
+            return HOOKAH_INPUT
+        else:
+            await update.message.reply_text("🍹 Что заказал из напитков?", reply_markup=ReplyKeyboardRemove())
+            return BAR_INPUT
+    else:
+        await update.message.reply_text("Хорошо! Когда гость придёт — нажми /start.", reply_markup=ReplyKeyboardRemove())
+        context.user_data.clear()
+        return ConversationHandler.END
     return ConversationHandler.END
 
 # ─── КАЛЬЯНЩИК ───────────────────────────────────────
@@ -388,6 +416,7 @@ conv_handler = ConversationHandler(
         NEW_PHONE: [MessageHandler(filters.TEXT & ~filters.COMMAND, new_phone)],
         NEW_IMPORTANT: [MessageHandler(filters.TEXT & ~filters.COMMAND, new_important)],
         CREATE_GUEST: [MessageHandler(filters.TEXT & ~filters.COMMAND, create_guest)],
+        AFTER_CREATE: [MessageHandler(filters.TEXT & ~filters.COMMAND, after_create)],
         HOOKAH_INPUT: [MessageHandler(filters.TEXT & ~filters.COMMAND, hookah_input)],
         HOOKAH_NOTES: [MessageHandler(filters.TEXT & ~filters.COMMAND, hookah_notes)],
         BAR_INPUT: [MessageHandler(filters.TEXT & ~filters.COMMAND, bar_input)],
