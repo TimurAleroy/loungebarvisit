@@ -188,7 +188,7 @@ async def new_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.text == "❌ Отмена":
         await update.message.reply_text("Отменено.", reply_markup=ReplyKeyboardRemove())
         return ConversationHandler.END
-    keyboard = [["VIP", "Постоянный"], ["Редкий", "Новый"]]
+    keyboard = [["VIP", "Постоянный"], ["Редкий"]]
     await update.message.reply_text(
         f"Создаём карточку для *{context.user_data['new_guest_name']}*\n\n🏷 Статус гостя?",
         parse_mode="Markdown",
@@ -428,6 +428,23 @@ conv_handler = ConversationHandler(
     ],
 )
 
+async def help_cmd(update, context):
+    text = (
+        "📖 Статусы гостей\n\n"
+        "👑 VIP\n"
+        "Особый гость. Большие чеки, важные связи. Назначает только администратор. Встречаем лично, помним всё.\n\n"
+        "⭐ Постоянный\n"
+        "Приходит регулярно. Узнаём в лицо. Называем по имени, предлагаем любимый кальян без вопросов.\n\n"
+        "🔄 Редкий\n"
+        "Бывал несколько раз, но нечасто. Тёплая встреча — показываем что помним. Мотивирует приходить чаще.\n\n"
+        "━━━━━━━━━━━━\n"
+        "Карточка создаётся не на каждого — только на тех кто пришёл повторно или произвёл впечатление.\n"
+        "VIP назначает только администратор.\n"
+        "История визитов важнее статуса — смотри последние 3 визита перед обслуживанием."
+    )
+    await update.message.reply_text(text)
+
 app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+app.add_handler(CommandHandler("help", help_cmd))
 app.add_handler(conv_handler)
 app.run_polling()
